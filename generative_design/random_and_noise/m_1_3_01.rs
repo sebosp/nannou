@@ -28,7 +28,6 @@
  * s                   : save png
  */
 use nannou::noise::NoiseFn;
-use nannou::noise::Seedable;
 use nannou::prelude::*;
 
 fn main() {
@@ -46,23 +45,22 @@ fn model(app: &App) -> Model {
         .view(view)
         .mouse_pressed(mouse_pressed)
         .key_pressed(key_pressed)
-        .build()
-        .unwrap();
+        .build();
 
     Model {
         act_random_seed: 42,
     }
 }
 
-fn view(app: &App, model: &Model, frame: Frame) {
+fn view(app: &App, model: &Model) {
     let draw = app.draw();
     let win = app.window_rect();
 
     draw.background().color(WHITE);
 
-    let noise = nannou::noise::Perlin::new().set_seed(model.act_random_seed);
+    let noise = nannou::noise::Perlin::new(model.act_random_seed);
 
-    let noise_x_range = map_range(app.mouse.x, win.left(), win.right(), 0.0, win.w()) / 10.0;
+    let noise_x_range = map_range(app.mouse().x, win.left(), win.right(), 0.0, win.w()) / 10.0;
 
     let range = win.w() as usize / 10;
     let vertices = (0..=range).map(|x| {
@@ -73,7 +71,7 @@ fn view(app: &App, model: &Model, frame: Frame) {
     draw.polyline()
         .weight(1.0)
         .points(vertices)
-        .rgb(0.0, 0.5, 0.64);
+        .srgb(0.0, 0.5, 0.64);
 
     for x in (0..win.w() as usize).step_by(10) {
         let noise_x = map_range(x as f32 / 10.0, 0.0, win.w(), 0.0, noise_x_range) as f64;
@@ -83,17 +81,15 @@ fn view(app: &App, model: &Model, frame: Frame) {
             .w_h(3.0, 3.0)
             .color(BLACK);
     }
-    // Write to the window frame.
-    draw.to_frame(app, &frame).unwrap();
 }
 
 fn mouse_pressed(_app: &App, model: &mut Model, _button: MouseButton) {
     model.act_random_seed = (random_f32() * 100000.0) as u32;
 }
 
-fn key_pressed(app: &App, _model: &mut Model, key: Key) {
-    if key == Key::S {
+fn key_pressed(app: &App, _model: &mut Model, key: KeyCode) {
+    if key == KeyCode::KeyS {
         app.main_window()
-            .capture_frame(app.exe_name().unwrap() + ".png");
+            .save_screenshot(app.exe_name().unwrap() + ".png");
     }
 }

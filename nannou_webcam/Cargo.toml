@@ -1,0 +1,44 @@
+[package]
+name = "nannou_webcam"
+description = "The webcam API for nannou - the creative-coding framework."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+# Pinned to 0.11 to match `nokhwa`'s flume (it caps at 0.11), so nannou_webcam
+# resolves a single flume rather than 0.11 + the workspace's 0.12. Bump to the
+# workspace version once nokhwa moves to flume 0.12.
+flume = "0.11"
+bevy = { workspace = true, features = [
+  "bevy_asset",
+  "bevy_image",
+  "bevy_log",
+  "bevy_render",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+nokhwa = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = { workspace = true }
+getrandom = { workspace = true, features = ["wasm_js"] }
+wasm-bindgen = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+workspace = true
+features = [
+  'Document',
+  'Element',
+  'HtmlElement',
+  'Location',
+  'Node',
+  'Window',
+]
+
+[lib]
+path = "src/lib.rs"

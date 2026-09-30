@@ -6,7 +6,6 @@
 //
 // example 10-02: Seeking Neural
 use nannou::prelude::*;
-use nannou::Draw;
 
 fn main() {
     nannou::app(model).update(update).run();
@@ -71,7 +70,7 @@ impl Vehicle {
     }
 
     // Method to update position
-    fn update(&mut self, win: Rect) {
+    fn update(&mut self, win: geom::Rect) {
         // Update velocity
         self.velocity += self.acceleration;
         // Limit speed
@@ -119,13 +118,12 @@ impl Vehicle {
         desired *= self.max_speed;
         // Steering = Desired minus velocity
         // Limit to maximum steering force
-        let steer = (desired - self.velocity).clamp_length_max(self.max_force);
-        steer
+
+        (desired - self.velocity).clamp_length_max(self.max_force)
     }
 
     fn display(&self, draw: &Draw) {
         // Draw a triangle rotated in the direction of velocity
-        // This calculation is wrong
         let theta = (self.velocity.angle() + PI / 2.0) * -1.0;
         let points = vec![
             pt2(0.0, -self.r * 2.0),
@@ -136,8 +134,8 @@ impl Vehicle {
             .stroke(BLACK)
             .points(points)
             .xy(self.position)
-            .rgb(0.5, 0.5, 0.5)
-            .rotate(theta);
+            .srgb(0.5, 0.5, 0.5)
+            .rotate(-theta);
     }
 }
 
@@ -149,12 +147,12 @@ struct Model {
 }
 
 fn model(app: &App) -> Model {
+    app.set_update_rate(60.0);
     app.new_window()
         .size(640, 360)
         .view(view)
         .mouse_pressed(mouse_pressed)
-        .build()
-        .unwrap();
+        .build();
 
     let num_targets = 8;
 
@@ -184,7 +182,7 @@ fn model(app: &App) -> Model {
 }
 
 // Make a random ArrayList of targets to steer towards
-fn make_targets(m: &mut Model, win: &Rect) {
+fn make_targets(m: &mut Model, win: &geom::Rect) {
     m.targets = (0..m.num_targets)
         .map(|_| {
             vec2(
@@ -195,13 +193,13 @@ fn make_targets(m: &mut Model, win: &Rect) {
         .collect();
 }
 
-fn update(app: &App, m: &mut Model, _update: Update) {
+fn update(app: &App, m: &mut Model) {
     // Update the Vehicle
     m.v.steer(&m.targets, &m.desired);
     m.v.update(app.window_rect());
 }
 
-fn view(app: &App, m: &Model, frame: Frame) {
+fn view(app: &App, m: &Model) {
     // Begin drawing
     let draw = app.draw();
     draw.background().color(WHITE);
@@ -210,7 +208,7 @@ fn view(app: &App, m: &Model, frame: Frame) {
     draw.ellipse()
         .xy(m.desired)
         .radius(18.0)
-        .rgba(0.0, 0.0, 0.0, 0.4)
+        .srgba(0.0, 0.0, 0.0, 0.4)
         .stroke(BLACK)
         .stroke_weight(2.0);
 
@@ -236,9 +234,6 @@ fn view(app: &App, m: &Model, frame: Frame) {
             .stroke_weight(2.0);
     }
     m.v.display(&draw);
-
-    // Write the result of our drawing to the window's frame.
-    draw.to_frame(app, &frame).unwrap();
 }
 
 fn mouse_pressed(app: &App, m: &mut Model, _button: MouseButton) {

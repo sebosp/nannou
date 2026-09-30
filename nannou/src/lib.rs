@@ -12,36 +12,72 @@
 //! If you're new to nannou, we recommend checking out [the
 //! examples](https://github.com/nannou-org/nannou/tree/master/examples) to get an idea of how
 //! nannou applications are structured and how the API works.
+//!
+//! Nannou is built on the [Bevy](https://bevyengine.org) game engine. The [`nannou::app`](app())
+//! and [`nannou::sketch`](sketch()) builders provide the familiar nannou entry points, while
+//! [`NannouPlugin`] bundles nannou's functionality as a Bevy [`Plugin`] so it can also be added to
+//! an existing Bevy `App`.
+//!
+//! When using nannou as a Bevy plugin, the [`context::App`] system param gives your own Bevy
+//! systems access to nannou's conveniences (time, input, the focused window and the `Draw` API)
+//! with no `unsafe` and no builder machinery. See the [`context`] module and the `system_param`
+//! example for details.
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
+use bevy::prelude::{App as BevyApp, IntoScheduleConfigs, Plugin, PostUpdate};
+use bevy::winit::WinitSettings;
 
 pub use find_folder;
 pub use lyon;
-pub use winit;
 
-pub use self::app::{App, LoopMode};
-pub use self::draw::Draw;
-pub use self::event::Event;
-pub use self::frame::Frame;
 #[doc(inline)]
-pub use nannou_core::{color, glam, math, rand};
-#[doc(inline)]
-pub use nannou_mesh as mesh;
-#[doc(inline)]
-pub use nannou_wgpu as wgpu;
+pub use nannou_core::{glam, math, rand};
+
+pub use self::context::App;
 
 pub mod app;
-pub mod draw;
-pub mod ease;
-pub mod event;
-pub mod frame;
+mod camera;
+pub mod context;
+mod frame;
 pub mod geom;
 pub mod image;
+#[cfg(feature = "serde")]
 pub mod io;
+mod light;
 pub mod noise;
 pub mod prelude;
-pub mod state;
-pub mod text;
+mod render;
 pub mod time;
-pub mod window;
+mod window;
+
+pub use nannou_wgpu as wgpu;
+
+pub struct NannouPlugin;
+
+impl Plugin for NannouPlugin {
+    fn build(&self, app: &mut BevyApp) {
+        app.add_plugins(nannou_draw::NannouDrawPlugin);
+        // Keep each default window camera's orthographic z range sized to its window.
+        app.add_systems(
+            PostUpdate,
+            window::update_default_camera_z_range.before(bevy::camera::CameraUpdateSystems),
+        );
+        // `FramePlugin` extracts per-window scale factors so a `Frame` can be constructed from a
+        // (custom or classic) render-world system.
+        app.add_plugins(crate::frame::FramePlugin);
+        // Ensure the resources the `bevy::App` system param relies on are present regardless of
+        // whether `NannouPlugin` is used standalone or via the `nannou::app`/`sketch` builders.
+        // `FrameTimeDiagnosticsPlugin` backs `App::fps`; guard against a double-add in case the
+        // user has already registered it.
+        if !app.is_plugin_added::<FrameTimeDiagnosticsPlugin>() {
+            app.add_plugins(FrameTimeDiagnosticsPlugin::default());
+        }
+        app.init_resource::<WinitSettings>();
+        #[cfg(feature = "video")]
+        {
+            app.add_plugins(nannou_video::NannouVideoPlugin);
+        }
+    }
+}
 
 /// Begin building the `App`.
 ///
@@ -54,7 +90,7 @@ pub mod window;
 ///
 /// The Model that is returned by the function is the same model that will be passed to the
 /// given event and view functions.
-pub fn app<M: 'static>(model: app::ModelFn<M>) -> app::Builder<M, Event> {
+pub fn app<M: 'static + Send>(model: app::ModelFn<M>) -> app::Builder<M> {
     app::Builder::new(model)
 }
 
@@ -63,6 +99,6 @@ pub fn app<M: 'static>(model: app::ModelFn<M>) -> app::Builder<M, Event> {
 ///
 /// This is useful for late night hack sessions where you just don't care about all that other
 /// stuff, you just want to play around with some ideas or make something pretty.
-pub fn sketch(view: app::SketchViewFn) -> app::SketchBuilder<Event> {
+pub fn sketch(view: app::SketchViewFn) -> app::SketchBuilder {
     app::Builder::sketch(view)
 }

@@ -1,3 +1,7 @@
+use nannou::image::GenericImageView;
+use nannou::lyon::math::Point;
+use nannou::lyon::path::PathEvent;
+use usvg::tiny_skia_path::{PathSegment, PathSegmentsIter, Point as SvgPoint};
 // P_4_3_1_02
 //
 // Generative Gestaltung – Creative Coding im Web
@@ -25,17 +29,12 @@
  */
 use nannou::prelude::*;
 
-use nannou::image;
-use nannou::image::GenericImageView;
-use nannou::lyon::math::Point;
-use nannou::lyon::path::PathEvent;
-
 fn main() {
     nannou::app(model).run();
 }
 
 struct Model {
-    image: image::DynamicImage,
+    image: Handle<Image>,
     shapes: Vec<SvgPath>,
 }
 
@@ -43,11 +42,11 @@ struct Model {
 struct SvgPath {
     events: Vec<PathEvent>,
     weight: f32,
-    color: Rgba,
+    color: Srgba,
 }
 
 impl SvgPath {
-    fn new(events: Vec<PathEvent>, weight: f32, color: Rgba) -> Self {
+    fn new(events: Vec<PathEvent>, weight: f32, color: Srgba) -> Self {
         SvgPath {
             events,
             weight,
@@ -62,14 +61,9 @@ fn model(app: &App) -> Model {
         .size(600, 900)
         .view(view)
         .key_released(key_released)
-        .build()
-        .unwrap();
+        .build();
 
-    let svg_assets_path = app
-        .assets_path()
-        .unwrap()
-        .join("svg")
-        .join("generative_examples");
+    let svg_assets_path = app.assets_path().join("svg").join("generative_examples");
 
     let mut assets = Vec::new();
     assets.push(svg_assets_path.join("056.svg"));
@@ -90,57 +84,35 @@ fn model(app: &App) -> Model {
 
     for asset in assets {
         let opt = usvg::Options::default();
-        let rtree = usvg::Tree::from_file(&asset, &opt).unwrap();
-
-        for node in rtree.root().descendants() {
-            if let usvg::NodeKind::Path(ref p) = *node.borrow() {
-                if let Some(ref stroke) = p.stroke {
-                    let color = match stroke.paint {
-                        usvg::Paint::Color(c) => rgba(
-                            c.red as f32 / 255.0,
-                            c.green as f32 / 255.0,
-                            c.blue as f32 / 255.0,
-                            1.0,
-                        ),
-                        _ => rgba(0.0, 0.0, 0.0, 1.0),
-                    };
-
-                    let path_events = convert_path(p);
-                    let mut v = Vec::new();
-                    for e in path_events {
-                        v.push(e);
-                    }
-                    let path = SvgPath::new(v, stroke.width.value() as f32, color);
-                    shapes.push(path);
-                }
-            }
-        }
+        info!("Loading svg file: {:?}", asset);
+        let svg_data = std::fs::read(&asset).unwrap();
+        let rtree = usvg::Tree::from_data(&svg_data, &opt).unwrap();
+        collect_svg_paths(rtree.root(), &mut shapes);
     }
 
-    let img_path = app
-        .assets_path()
-        .unwrap()
-        .join("images")
-        .join("generative_examples")
-        .join("p_4_3_1_01.png");
-
-    let image = image::open(img_path).unwrap();
+    let image = app
+        .asset_server()
+        .load("images/generative_examples/p_4_3_1_01.png");
 
     Model { image, shapes }
 }
 
 // Draw the state of your `Model` into the given `Frame` here.
-fn view(app: &App, model: &Model, frame: Frame) {
-    frame.clear(WHITE);
+fn view(app: &App, model: &Model) {
+    let draw = app.draw();
+    draw.background().color(WHITE);
 
     let draw = app.draw();
     let win = app.window_rect();
 
-    let (w, h) = model.image.dimensions();
+    let images = app.image_assets();
+    let image = images.get(&model.image).unwrap();
+    let image = image.clone().try_into_dynamic().unwrap();
+    let (w, h) = image.dimensions();
     for grid_x in 0..w {
         for grid_y in 0..h {
             // get current color
-            let c = model.image.get_pixel(grid_x, grid_y);
+            let c = image.get_pixel(grid_x, grid_y);
             // greyscale conversion
             let red = c[0] as f32 / 255.0;
             let green = c[1] as f32 / 255.0;
@@ -162,50 +134,76 @@ fn view(app: &App, model: &Model, frame: Frame) {
             draw.path()
                 .stroke()
                 .stroke_weight(weight)
-                .rgb(red, green, blue)
+                .srgb(red, green, blue)
                 .events(e)
                 .x_y(pos_x, pos_y);
         }
     }
-    draw.to_frame(app, &frame).unwrap();
 }
 
-fn key_released(app: &App, _model: &mut Model, key: Key) {
-    if key == Key::S {
+fn key_released(app: &App, _model: &mut Model, key: KeyCode) {
+    if key == KeyCode::KeyS {
         app.main_window()
-            .capture_frame(app.exe_name().unwrap() + ".png");
+            .save_screenshot(app.exe_name().unwrap() + ".png");
     }
 }
 
-/// Some glue between usvg's iterators and lyon's.
+/// Recursively collect the stroked paths from a usvg group into `shapes`.
+///
+/// usvg 0.47 replaced the flat `descendants()` + `NodeKind` model with a typed
+/// `Node` tree, so we walk the group children and recurse into nested groups.
+fn collect_svg_paths(group: &usvg::Group, shapes: &mut Vec<SvgPath>) {
+    for node in group.children() {
+        match node {
+            usvg::Node::Group(child) => collect_svg_paths(child, shapes),
+            usvg::Node::Path(p) => {
+                if let Some(stroke) = p.stroke() {
+                    let color = match stroke.paint() {
+                        usvg::Paint::Color(c) => Color::srgba(
+                            c.red as f32 / 255.0,
+                            c.green as f32 / 255.0,
+                            c.blue as f32 / 255.0,
+                            1.0,
+                        ),
+                        _ => Color::srgba(0.0, 0.0, 0.0, 1.0),
+                    };
+                    let events = convert_path(p).collect();
+                    shapes.push(SvgPath::new(events, stroke.width().get(), color.into()));
+                }
+            }
+            _ => {}
+        }
+    }
+}
 
-fn point(x: &f64, y: &f64) -> Point {
-    Point::new((*x) as f32, (*y) as f32)
+/// Some glue between usvg's (tiny-skia) path segments and lyon's path events.
+
+fn point(p: &SvgPoint) -> Point {
+    Point::new(p.x, p.y)
 }
 
 pub struct PathConvIter<'a> {
-    iter: std::slice::Iter<'a, usvg::PathSegment>,
+    iter: PathSegmentsIter<'a>,
     prev: Point,
     first: Point,
     needs_end: bool,
     deferred: Option<PathEvent>,
 }
 
-impl<'l> Iterator for PathConvIter<'l> {
+impl Iterator for PathConvIter<'_> {
     type Item = PathEvent;
     fn next(&mut self) -> Option<PathEvent> {
         if self.deferred.is_some() {
             return self.deferred.take();
         }
 
-        let next = self.iter.next();
-        match next {
-            Some(usvg::PathSegment::MoveTo { x, y }) => {
+        match self.iter.next() {
+            Some(PathSegment::MoveTo(p)) => {
                 if self.needs_end {
                     let last = self.prev;
                     let first = self.first;
                     self.needs_end = false;
-                    self.prev = point(x, y);
+                    self.prev = point(&p);
                     self.deferred = Some(PathEvent::Begin { at: self.prev });
                     self.first = self.prev;
                     Some(PathEvent::End {
@@ -214,38 +212,41 @@ impl<'l> Iterator for PathConvIter<'l> {
                         close: false,
                     })
                 } else {
-                    self.first = point(x, y);
+                    self.first = point(&p);
                     Some(PathEvent::Begin { at: self.first })
                 }
             }
-            Some(usvg::PathSegment::LineTo { x, y }) => {
+            Some(PathSegment::LineTo(p)) => {
                 self.needs_end = true;
                 let from = self.prev;
-                self.prev = point(x, y);
+                self.prev = point(&p);
                 Some(PathEvent::Line {
                     from,
                     to: self.prev,
                 })
             }
-            Some(usvg::PathSegment::CurveTo {
-                x1,
-                y1,
-                x2,
-                y2,
-                x,
-                y,
-            }) => {
+            Some(PathSegment::QuadTo(ctrl, p)) => {
                 self.needs_end = true;
                 let from = self.prev;
-                self.prev = point(x, y);
-                Some(PathEvent::Cubic {
+                self.prev = point(&p);
+                Some(PathEvent::Quadratic {
                     from,
-                    ctrl1: point(x1, y1),
-                    ctrl2: point(x2, y2),
+                    ctrl: point(&ctrl),
                     to: self.prev,
                 })
             }
-            Some(usvg::PathSegment::ClosePath) => {
+            Some(PathSegment::CubicTo(ctrl1, ctrl2, p)) => {
+                self.needs_end = true;
+                let from = self.prev;
+                self.prev = point(&p);
+                Some(PathEvent::Cubic {
+                    from,
+                    ctrl1: point(&ctrl1),
+                    ctrl2: point(&ctrl2),
+                    to: self.prev,
+                })
+            }
+            Some(PathSegment::Close) => {
                 self.needs_end = false;
                 self.prev = self.first;
                 Some(PathEvent::End {
@@ -272,9 +273,9 @@ impl<'l> Iterator for PathConvIter<'l> {
     }
 }
 
-pub fn convert_path<'a>(p: &'a usvg::Path) -> PathConvIter<'a> {
+pub fn convert_path(p: &usvg::Path) -> PathConvIter<'_> {
     PathConvIter {
-        iter: p.segments.iter(),
+        iter: p.data().segments(),
         first: Point::new(0.0, 0.0),
         prev: Point::new(0.0, 0.0),
         deferred: None,
