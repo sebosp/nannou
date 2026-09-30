@@ -5,7 +5,7 @@
 use std::{
     any::TypeId,
     ops::{Deref, Range},
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard, TryLockResult},
 };
 
 use self::primitive::Primitive;
@@ -191,14 +191,6 @@ impl IntermediaryState {
     pub fn path_event_buffer(&self) -> &[PathEvent] {
         &self.path_event_buffer
     }
-    /// Allows inspecting the path points colored buffer
-    pub fn path_points_colored_buffer(&self) -> &[(Point2, Color)] {
-        &self.path_points_colored_buffer
-    }
-    /// Allows inspecting the path points textured buffer
-    pub fn path_points_textured_buffer(&self) -> &[(Point2, TexCoords)] {
-        &self.path_points_textured_buffer
-    }
     /// Allows inspecting the text buffer
     pub fn text_buffer(&self) -> &str {
         self.text_buffer.as_str()
@@ -246,8 +238,10 @@ impl State {
     }
 
     /// Allows inspecting the intermediary_state.
-    pub fn intermediary_state(&self) -> Ref<IntermediaryState> {
-        self.intermediary_state.borrow()
+    pub fn try_read_intermediary_state(
+        &self,
+    ) -> TryLockResult<RwLockReadGuard<'_, IntermediaryState>> {
+        self.intermediary_state.try_read()
     }
 
     /// Allows inspecting the theme
