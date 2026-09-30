@@ -48,7 +48,7 @@ evalexpr = "13"
 find_folder = "0.3"
 flume = "0.12"
 futures = "0.3"
-glam = { version = "0.32",  default-features = false }
+glam = { version = "0.32", default-features = false }
 hound = "3.4"
 hrtf = "0.8"
 ilda-idtf = "0.1"
@@ -60,14 +60,14 @@ midir = "0.11"
 nokhwa = { version = "0.10", features = ["input-native", "camera-sync-impl"] }
 noise = "0.9"
 notosans = "0.1"
-num-traits = {version = "0.2", default-features = false }
+num-traits = { version = "0.2", default-features = false }
 # Kept in lockstep with the `parley` version used by `bevy_text` so that the
 # font database can be shared. System font discovery is feature-gated via
 # `nannou_draw/system_font_discovery`.
 parley = { version = "0.9.0", default-features = false, features = ["std"] }
 pennereq = "0.3"
 quote = "1"
-rand = {version = "0.10", default-features = false }
+rand = { version = "0.10", default-features = false }
 rayon = "1.10"
 ringbuf = "0.5"
 rosc = "0.11"
@@ -78,7 +78,10 @@ serde_json = "1"
 serde_yaml = "0.9"
 # Must semver-unify with `bevy_text`'s `swash` dependency: glyph rasterisation
 # goes through bevy's `ScaleCx` resource, whose types must match.
-swash = { version = "0.2.6", default-features = false, features = ["std", "scale"] }
+swash = { version = "0.2.6", default-features = false, features = [
+    "std",
+    "scale",
+] }
 syn = "2"
 thiserror = "2"
 tempfile = "3"
@@ -87,7 +90,7 @@ toml = "1"
 toml_edit = "0.25"
 usvg = "0.47"
 uuid = "1.8"
-video-rs = "0.11"
+video-rs = "0.12"
 walkdir = "2"
 wasm-bindgen = "0.2"
 web-sys = "0.3"
