@@ -4,7 +4,7 @@
 
 - Author: mitchmindtree
 - Required Knowledge:
-    - [Getting Started](/getting_started.md)
+    - [Getting Started](../../getting_started.md)
 - Reading Time: 7 minutes
 
 ---
@@ -39,11 +39,11 @@ fn main() {
     nannou::sketch(view).run()
 }
 
-fn view(app: &App, frame: Frame) {
+fn view(app: &App) {
     let draw = app.draw();
     draw.background().color(PLUM);
-    draw.ellipse().color(STEELBLUE);
-    draw.to_frame(app, &frame).unwrap();
+    draw.ellipse().color(STEEL_BLUE);
+    
 }
 ```
 
@@ -68,21 +68,21 @@ fn main() {
 }
 
 struct Model {
-    _window: window::Id,
+    _window: Entity,
 }
 
 fn model(app: &App) -> Model {
-    let _window = app.new_window().view(view).build().unwrap();
+    let _window = app.new_window().view(view).build();
     Model { _window }
 }
 
-fn update(_app: &App, _model: &mut Model, _update: Update) {}
+fn update(_app: &App, _model: &mut Model) {}
 
-fn view(app: &App, _model: &Model, frame: Frame) {
+fn view(app: &App, _model: &Model) {
     let draw = app.draw();
     draw.background().color(PLUM);
-    draw.ellipse().color(STEELBLUE);
-    draw.to_frame(app, &frame).unwrap();
+    draw.ellipse().color(STEEL_BLUE);
+    
 }
 ```
 
@@ -119,7 +119,7 @@ flexibility, you can turn it into an app by following these steps:
    # fn main() {
    nannou::sketch(view).run()
    # }
-   # fn view(_: &App, _: Frame) {}
+   # fn view(_: &App) {}
    ```
 
    to
@@ -132,7 +132,7 @@ flexibility, you can turn it into an app by following these steps:
    # }
    # struct Model {}
    # fn model(_: &App) -> Model { Model {} }
-   # fn view(_: &App, _: &Model, _: Frame) {}
+   # fn view(_: &App, _: &Model, _: Entity) {}
    ```
 
 2. Add a `Model` for tracking state:
@@ -145,7 +145,7 @@ flexibility, you can turn it into an app by following these steps:
 
 3. Add a `model` function for creating the `Model`:
 
-   ```rust,no_Run
+   ```rust,no_run
    # #![allow(dead_code)]
    # use nannou::prelude::*;
    # fn main() {}
@@ -161,7 +161,7 @@ flexibility, you can turn it into an app by following these steps:
    # #![allow(dead_code, unused_variables)]
    # use nannou::prelude::*;
    # fn main() {}
-   fn view(app: &App, frame: Frame) {
+   fn view(app: &App) {
    # }
    ```
 
@@ -172,7 +172,7 @@ flexibility, you can turn it into an app by following these steps:
    # use nannou::prelude::*;
    # fn main() {}
    # struct Model {}
-   fn view(app: &App, _model: &Model, frame: Frame) {
+   fn view(app: &App, _model: &Model, _window: Entity) {
    # }
    ```
 
@@ -189,6 +189,6 @@ And that's it! You are now ready to take your sketch to the next level.
 | Templates | [template_sketch.rs](https://github.com/nannou-org/nannou/blob/master/examples/templates/template_sketch.rs) | [template_app.rs](https://github.com/nannou-org/nannou/blob/master/examples/templates/template_app.rs) |
 | Can make awesome stuff? | Yes | Yes |
 
-To learn more about nannou **sketches** visit the [Draw a sketch](/tutorials/basics/draw-a-sketch.md) tutorial.
+To learn more about nannou **sketches** visit the [Draw a sketch](./draw-a-sketch.md) tutorial.
 
-To learn more about nannou **apps** visit the [Anatomy of a nannou app](/tutorials/basics/anatomy-of-a-nannou-app.md) tutorial.
+To learn more about nannou **apps** visit the [Anatomy of a nannou app](./anatomy-of-a-nannou-app.md) tutorial.

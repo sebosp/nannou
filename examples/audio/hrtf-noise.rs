@@ -1,8 +1,9 @@
 //! A minimal example to demonstrate the effect of HRTF (head-related transfer function) on a
 //! real-time stream of audio. HRTF is a popular approach to achieving binaural audio.
 //!
-//! The example uses generated white noise as the sound source. The source position can be rotated
-//! around the user by moving the mouse along the *x* axis.
+//! The example uses generated white noise as the sound source. The source position is controlled by
+//! moving the mouse: the *x* axis maps to left/right and the *y* axis maps to front/back, with the
+//! listener's head fixed at the centre of the window.
 //!
 //! The example will fail if the default cpal output device under the default host offers less than
 //! two channels.
@@ -10,18 +11,31 @@
 //! This effect is best experienced with headphones!
 
 use hrtf::{HrirSphere, HrtfContext, HrtfProcessor};
+use std::sync::mpsc::Sender;
+use std::thread;
+use std::thread::JoinHandle;
+
 use nannou::prelude::*;
-use nannou::rand::{rngs::SmallRng, Rng, SeedableRng};
+use nannou::rand::{RngExt, SeedableRng, rngs::SmallRng};
 use nannou_audio as audio;
 use nannou_audio::Buffer;
 
 fn main() {
-    nannou::app(model).run();
+    nannou::app(model).exit(exit).run();
+}
+
+pub enum AudioCommand {
+    Play,
+    Pause,
+    SourcePosition(Point3),
+    Exit,
 }
 
 struct Model {
-    stream: audio::Stream<Audio>,
+    audio_thread: JoinHandle<()>,
+    audio_tx: Sender<AudioCommand>,
     source_position: Point3,
+    is_paused: bool,
 }
 
 // HRTF requires a fixed sample rate and "block length" (i.e. buffer length in frames).
@@ -70,14 +84,13 @@ fn model(app: &App) -> Model {
         .key_pressed(key_pressed)
         .mouse_moved(mouse_moved)
         .view(view)
-        .build()
-        .unwrap();
+        .build();
 
     // Initialise the audio API so we can spawn an audio stream.
     let audio_host = audio::Host::new();
 
     // Load a HRIR sphere and initialise the processor.
-    let assets = app.assets_path().unwrap();
+    let assets = app.assets_path();
     let hrir_sphere_path = assets.join("hrir").join("IRC_1002_C").with_extension("bin");
     let hrir_sphere = HrirSphere::from_file(hrir_sphere_path, SAMPLE_RATE)
         .expect("failed to load HRIR sphere from file");
@@ -93,20 +106,49 @@ fn model(app: &App) -> Model {
         prev_source_position: [0.0; 3].into(),
     };
 
-    let stream = audio_host
-        .new_output_stream(audio_model)
-        .render(audio)
-        .channels(2)
-        .sample_rate(SAMPLE_RATE)
-        .frames_per_buffer(BUFFER_LEN_FRAMES)
-        .build()
-        .unwrap();
+    // Kick off the audio thread.
+    let (audio_tx, audio_rx) = std::sync::mpsc::channel();
+    let audio_thread = thread::spawn(move || {
+        let stream = audio_host
+            .new_output_stream(audio_model)
+            .render(audio)
+            .channels(2)
+            .sample_rate(SAMPLE_RATE)
+            .frames_per_buffer(BUFFER_LEN_FRAMES)
+            .build()
+            .unwrap();
 
-    stream.play().unwrap();
+        stream.play().unwrap();
+
+        loop {
+            match audio_rx.recv() {
+                Ok(AudioCommand::Play) => {
+                    stream.play().unwrap();
+                }
+                Ok(AudioCommand::Pause) => {
+                    stream.pause().unwrap();
+                }
+                Ok(AudioCommand::Exit) => {
+                    stream.pause().ok();
+                    break;
+                }
+                Ok(AudioCommand::SourcePosition(new_source_position)) => {
+                    stream
+                        .send(move |audio| {
+                            audio.source_position = new_source_position;
+                        })
+                        .unwrap();
+                }
+                Err(_) => break,
+            }
+        }
+    });
 
     Model {
-        stream,
+        audio_thread,
+        audio_tx,
         source_position,
+        is_paused: false,
     }
 }
 
@@ -123,7 +165,7 @@ fn audio(audio: &mut Audio, output: &mut Buffer) {
     // Fill the source buffer with new noise.
     audio.hrtf_data.source.drain(..BUFFER_LEN_FRAMES);
     for _ in 0..BUFFER_LEN_FRAMES {
-        let sample = audio.rng.gen::<f32>() * 2.0 - 1.0;
+        let sample = audio.rng.random::<f32>() * 2.0 - 1.0;
         audio.hrtf_data.source.push(sample);
     }
 
@@ -135,8 +177,8 @@ fn audio(audio: &mut Audio, output: &mut Buffer) {
     let hrtf_ctxt = HrtfContext {
         source: &audio.hrtf_data.source[..],
         output: &mut audio.hrtf_data.output[..],
-        new_sample_vector: (-audio.source_position).into(),
-        prev_sample_vector: (-audio.prev_source_position).into(),
+        new_sample_vector: to_hrtf_vec3(-audio.source_position),
+        prev_sample_vector: to_hrtf_vec3(-audio.prev_source_position),
         prev_left_samples: &mut audio.hrtf_data.prev_left_samples,
         prev_right_samples: &mut audio.hrtf_data.prev_right_samples,
         new_distance_gain,
@@ -157,13 +199,14 @@ fn audio(audio: &mut Audio, output: &mut Buffer) {
     }
 }
 
-fn key_pressed(_app: &App, model: &mut Model, key: Key) {
-    // Pause or unpause the audio when Space is pressed.
-    if let Key::Space = key {
-        if model.stream.is_playing() {
-            model.stream.pause().unwrap();
+fn key_pressed(_app: &App, model: &mut Model, key: KeyCode) {
+    if key == KeyCode::Space {
+        if model.is_paused {
+            model.audio_tx.send(AudioCommand::Play).ok();
+            model.is_paused = false;
         } else {
-            model.stream.play().unwrap();
+            model.audio_tx.send(AudioCommand::Pause).ok();
+            model.is_paused = true;
         }
     }
 }
@@ -174,17 +217,22 @@ fn mouse_moved(_app: &App, model: &mut Model, p: Point2) {
     let new_source_position = pt3(x, 0.0, y) / LISTENING_RADIUS;
     model.source_position = new_source_position;
     model
-        .stream
-        .send(move |audio| audio.source_position = new_source_position)
+        .audio_tx
+        .send(AudioCommand::SourcePosition(new_source_position))
         .ok();
 }
 
-fn view(app: &App, model: &Model, frame: Frame) {
-    frame.clear(rgb(0.1, 0.12, 0.13));
+fn exit(_app: &App, model: Model) {
+    model.audio_tx.send(AudioCommand::Exit).ok();
+    model.audio_thread.join().ok();
+}
+
+fn view(app: &App, model: &Model) {
     let draw = app.draw();
+    draw.background().color(Color::srgb(0.1, 0.12, 0.13));
 
     // Listenable area.
-    draw.ellipse().radius(LISTENING_RADIUS).rgb(0.1, 0.1, 0.1);
+    draw.ellipse().radius(LISTENING_RADIUS).srgb(0.1, 0.1, 0.1);
 
     // Draw the head.
     draw.ellipse().color(BLUE);
@@ -194,12 +242,13 @@ fn view(app: &App, model: &Model, frame: Frame) {
         .points(pt2(0.0, -30.0), pt2(0.0, 30.0));
     draw.text("HEAD").color(WHITE);
 
-    // Draw the source.
+    // Draw the source. Project the audio-space position back onto the screen to confirm the
+    // round-trip: the marker should sit directly under the cursor.
     let (x, y, z) = model.source_position.into();
+    let source_screen = pt2(x, z) * LISTENING_RADIUS;
+    draw.ellipse().radius(8.0).xy(source_screen).color(RED);
     let text = format!("Noise Source:\n[{:.2}, {:.2}, {:.2}]", x, y, z);
-    draw.text(&text).xy(app.mouse.position() + vec2(0.0, 20.0));
-
-    draw.to_frame(app, &frame).unwrap();
+    draw.text(&text).xy(source_screen + vec2(0.0, 20.0));
 }
 
 // Simple function for determining a gain based on the distance from the listener.
@@ -214,4 +263,8 @@ fn dist_gain(p: &Point3) -> f32 {
     }
     .powf(1.6)
     .min(1.0)
+}
+
+fn to_hrtf_vec3(v: nannou::geom::Vec3) -> hrtf::Vec3 {
+    hrtf::Vec3::new(v.x, v.y, v.z)
 }

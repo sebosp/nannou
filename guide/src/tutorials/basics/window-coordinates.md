@@ -4,7 +4,7 @@
 
 - Author: mitchmindtree
 - Required Knowledge:
-    - [Getting Started](/getting_started.md)
+    - [Getting Started](../../getting_started.md)
 - Reading Time: 15 minutes
 
 ---
@@ -119,7 +119,7 @@ So satisfying!
 window?*
 
 One approach would be to calculate the position by hand. For example, we know
-the top-left corner is equal to [-300, 200]. From there, we need to move the
+the top-left corner is equal to \[-300, 200\]. From there, we need to move the
 square to the right by half the width and down by half the height:
 
 ```rust,no_run
@@ -177,11 +177,11 @@ square and call it `r`.
 # #![allow(unused_variables)]
 # use nannou::prelude::*;
 # fn main() {
-let r = Rect::from_w_h(100.0, 100.0);
+let r = geom::Rect::from_w_h(100.0, 100.0);
 # }
 ```
 
-`r` now represents our square, positioned at [0.0, 0.0] with a width and height
+`r` now represents our square, positioned at \[0.0, 0.0\] with a width and height
 of 100.0. We can confirm this by changing our square drawing code to use `r`
 like so:
 
@@ -190,7 +190,7 @@ like so:
 # use nannou::prelude::*;
 # fn main() {
 #     let draw: Draw = unimplemented!();
-let r = Rect::from_w_h(100.0f32, 100.0f32);
+let r = geom::Rect::from_w_h(100.0f32, 100.0f32);
 draw.rect()
     .xy(r.xy())
     .wh(r.wh())
@@ -207,8 +207,8 @@ We can align our plum square to the `top_left_of` the window like so:
 # use nannou::prelude::*;
 # fn main() {
 #     let draw: Draw = unimplemented!();
-#     let win: Rect = unimplemented!();
-let r = Rect::from_w_h(100.0, 100.0).top_left_of(win);
+#     let win: geom::Rect = unimplemented!();
+let r = geom::Rect::from_w_h(100.0, 100.0).top_left_of(win);
 draw.rect()
     .xy(r.xy())
     .wh(r.wh())
@@ -239,12 +239,12 @@ semi-transparent blue color:
 # use nannou::prelude::*;
 # fn main() {
 #     let draw: Draw = unimplemented!();
-#     let win: Rect = unimplemented!();
+#     let win: geom::Rect = unimplemented!();
 let win_p = win.pad(25.0);
 draw.rect()
     .xy(win_p.xy())
     .wh(win_p.wh())
-    .color(rgba(0.3, 0.4, 0.7, 0.5));
+    .color(Color::srgba(0.3, 0.4, 0.7, 0.5));
 # }
 ```
 
@@ -258,9 +258,9 @@ square and achieve the desired look:
 # use nannou::prelude::*;
 # fn main() {
 #     let draw: Draw = unimplemented!();
-#     let win: Rect = unimplemented!();
+#     let win: geom::Rect = unimplemented!();
 let win_p = win.pad(25.0);
-let r = Rect::from_w_h(100.0, 100.0).top_left_of(win_p);
+let r = geom::Rect::from_w_h(100.0, 100.0).top_left_of(win_p);
 draw.rect()
     .xy(r.xy())
     .wh(r.wh())
@@ -286,9 +286,9 @@ circle:
 # use nannou::prelude::*;
 # fn main() {
 #     let draw: Draw = unimplemented!();
-#     let win: Rect = unimplemented!();
+#     let win: geom::Rect = unimplemented!();
 let win_p = win.pad(25.0);
-let square = Rect::from_w_h(100.0, 100.0).top_left_of(win_p);
+let square = geom::Rect::from_w_h(100.0, 100.0).top_left_of(win_p);
 draw.rect()
     .xy(square.xy())
     .wh(square.wh())
@@ -315,10 +315,10 @@ square:
 # use nannou::prelude::*;
 # fn main() {
 #     let draw: Draw = unimplemented!();
-#     let win: Rect = unimplemented!();
+#     let win: geom::Rect = unimplemented!();
 let pad = 25.0;
 let win_p = win.pad(pad);
-let square = Rect::from_w_h(100.0, 100.0).top_left_of(win_p);
+let square = geom::Rect::from_w_h(100.0, 100.0).top_left_of(win_p);
 draw.rect()
     .xy(square.xy())
     .wh(square.wh())

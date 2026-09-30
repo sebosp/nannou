@@ -1,0 +1,42 @@
+[package]
+name = "nannou_draw"
+version.workspace = true
+description = "A simple and expressive API for drawing 2D and 3D graphics, built on Bevy for nannou - the creative-coding framework."
+readme = "README.md"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true, default-features = false, features = [
+    "bevy_asset",
+    "bevy_color",
+    "bevy_core_pipeline",
+    "bevy_log",
+    "bevy_pbr",
+    "bevy_render",
+    "bevy_text",
+    # The default `Tonemapping` (TonyMcMapface) samples a LUT; the LUTs are
+    # zstd-compressed ktx2, hence `zstd_rust` (`tonemapping_luts` implies `ktx2`).
+    "tonemapping_luts",
+    "zstd_rust",
+]}
+lyon.workspace = true
+nannou_core = { workspace = true }
+notosans = { workspace = true, optional = true }
+parley.workspace = true
+skrifa.workspace = true
+swash.workspace = true
+rayon.workspace = true
+uuid.workspace = true
+bitflags.workspace = true
+
+[features]
+nightly = []
+notosans = ["dep:notosans"]
+# Discover fonts installed on the system (e.g. via fontconfig on Linux),
+# making them available to `draw.text().font(..)` by family name.
+system_font_discovery = ["bevy/system_font_discovery", "parley/system"]
+
+[[bench]]
+name = "drawing"
+harness = false

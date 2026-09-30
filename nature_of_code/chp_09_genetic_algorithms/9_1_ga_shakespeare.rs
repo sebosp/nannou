@@ -151,7 +151,7 @@ impl Population {
         // a lower fitness = fewer entries to mating pool = less likely to be picked as a parent
         for i in 0..self.population.len() {
             let fitness = map_range(self.population[i].fitness, 0.0, max_fitness, 0.0, 1.0);
-            let n = fitness as usize * 100; // Arbitrary multiplier, we can also use monte carlo method
+            let n = (fitness * 100.0) as usize; // Arbitrary multiplier, we can also use monte carlo method
             for _ in 0..n {
                 self.mating_pool.push(self.population[i].clone());
             }
@@ -217,7 +217,8 @@ struct Model {
 }
 
 fn model(app: &App) -> Model {
-    app.new_window().size(640, 360).view(view).build().unwrap();
+    app.set_update_rate(60.0);
+    app.new_window().size(640, 360).view(view).build();
     let target = "To be or not to be.".to_string();
     let pop_max = 150;
     let mutation_rate = 0.01;
@@ -232,7 +233,12 @@ fn model(app: &App) -> Model {
     }
 }
 
-fn update(_app: &App, model: &mut Model, _update: Update) {
+fn update(_app: &App, model: &mut Model) {
+    // Once we've evolved the target phrase, stop evolving so we don't keep
+    // churning the (already solved) population on every reactive update.
+    if model.population.finished {
+        return;
+    }
     // Generate mating pool
     model.population.natural_selection();
     // Create next generation
@@ -243,13 +249,14 @@ fn update(_app: &App, model: &mut Model, _update: Update) {
     model.answer = model.population.get_best();
 }
 
-fn view(app: &App, model: &Model, frame: Frame) {
-    frame.clear(WHITE);
+fn view(app: &App, model: &Model) {
+    let draw = app.draw();
+    draw.background().color(WHITE);
 
     let win = app.window_rect();
     let draw = app.draw();
 
-    draw.text(&"Best Phrase:".to_string())
+    draw.text("Best Phrase:")
         .color(BLACK)
         .left_justify()
         .align_text_top()
@@ -266,8 +273,8 @@ fn view(app: &App, model: &Model, frame: Frame) {
         .y(-100.0)
         .wh(win.wh());
 
-    let gen = format!("total generations:     {}", model.population.generations);
-    draw.text(&gen)
+    let generations = format!("total generations:     {}", model.population.generations);
+    draw.text(&generations)
         .color(BLACK)
         .left_justify()
         .align_text_top()
@@ -316,10 +323,7 @@ fn view(app: &App, model: &Model, frame: Frame) {
         .y(-10.0)
         .wh(win.wh());
 
-    // Write the result of our drawing to the window's frame.
-    draw.to_frame(app, &frame).unwrap();
-
     if model.population.finished {
-        app.set_loop_mode(LoopMode::loop_once());
+        app.set_update_mode(UpdateMode::freeze());
     }
 }

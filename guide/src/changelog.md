@@ -5,9 +5,160 @@ back to the origins.
 
 ---
 
-# Unreleased
+# Version 0.20.0 (2026-06-20)
 
-*There are currently no unreleased changes.*
+## The Bevy Refactor
+
+This is a ground-up overhaul of nannou: it is now built on top of the
+[Bevy](https://bevyengine.org) game engine. Rather than maintaining its own
+application loop, windowing, event and graphics wrappers, nannou now exposes its
+functionality as a set of Bevy plugins. This lets nannou focus on its
+creative-coding API while sharing the upkeep of windowing, rendering and platform
+support with the wider Bevy community. See
+[#946](https://github.com/nannou-org/nannou/issues/946) for the background and
+motivation.
+
+The familiar `model`/`update`/`view` API and the `Draw` API remain, so many
+sketches need only minor changes. At the same time, the full Bevy ecosystem (its
+ECS, renderer, asset system and plugins) is now available to nannou apps.
+
+### Architecture
+
+- nannou is now a Bevy plugin. `nannou::app(model)...run()` and
+  `nannou::sketch(view).run()` build and run a Bevy `App` under the hood, and
+  `NannouPlugin` may be added to an existing Bevy `App` directly.
+- The custom application loop, window wrappers and simplified event types have
+  been removed in favour of Bevy's equivalents.
+- The user's `Model` is stored within the Bevy app, and the `App` provides
+  ergonomic access to the underlying ECS `World`.
+- Windows are now referred to by their Bevy `Entity` rather than a `window::Id`.
+
+### Crates
+
+- **New:** `nannou_draw` (the `Draw` API as a Bevy plugin), `nannou_video`
+  (video playback), `nannou_webcam` (webcam capture), `nannou_midi` (MIDI I/O)
+  and `nannou_derive` (procedural macros, e.g. the `#[shader_model]` attribute).
+- **Removed:** `nannou_egui` and `nannou_egui_demo_app` (egui is now integrated
+  via [`bevy_egui`](https://crates.io/crates/bevy_egui)), `nannou_mesh` (folded
+  into `nannou_draw`/`nannou_core`), and the `nannou_new` and `nannou_package`
+  tools.
+- `nannou_core`, `nannou_wgpu`, `nannou_audio`, `nannou_osc`, `nannou_laser` and
+  `nannou_isf` remain and have been ported to the new architecture.
+
+### Graphics
+
+- The `Draw` API is now rendered through Bevy's renderer.
+- Added a `ShaderModel` abstraction, along with the `#[shader_model]` attribute
+  (from `nannou_derive`), for defining custom materials and shaders.
+- Added 3D support, including cameras and lights via `App::new_camera` and
+  `App::new_light`.
+- Added a compute API (`Builder::compute`) for running compute shaders.
+- `nannou_isf` (Interactive Shader Format) rendering ported to Bevy.
+- Colour types and constants are now aligned with Bevy's `bevy_color` (e.g. the
+  CSS palette colour constants such as `PLUM` and `STEEL_BLUE`).
+- `draw.text()` now renders glyphs as textured quads sampling `bevy_text`'s
+  cached glyph atlases (rasterised via `swash`) instead of tessellating glyph
+  outlines every frame: dense or small text is far cheaper and pixel-crisp, and
+  colour fonts (e.g. emoji) are supported. Note that glyphs are rasterised at
+  their font size, so text under large `draw.scale(..)` factors will blur;
+  resolution-independent vector text remains available via
+  `draw.text_layout(..).build(rect)` and `draw.path().events(..)`.
+- Text layout shares `bevy_text`'s `parley` font database: fonts loaded as Bevy
+  `Font` assets can be selected with `draw.text(..).font(<family name>)`,
+  system-installed fonts are discovered automatically (`system_font_discovery`
+  feature, enabled by default) and the bundled Noto Sans (`notosans` feature,
+  enabled by default) is the default face.
+- The `view` function no longer receives or returns a `Frame`; it is simply
+  called each time a window needs to be redrawn.
+- `Draw` and `Drawing` no longer carry a shader-model type parameter
+  ([#1054](https://github.com/nannou-org/nannou/issues/1054)). The drawing
+  state was already stored type-erased, so the parameter only bloated
+  monomorphisation in downstream sketches. `Draw<SM>` is now `Draw`,
+  `Drawing<'a, T, SM>` is `Drawing<'a, T>` (where `T` is a zero-cost marker
+  gating the per-primitive builder methods), and likewise for `Background`,
+  `Instanced` and `Indirect`. Consequences:
+  - `Drawing::map_shader_model::<SM>(..)` is checked at runtime: the closure
+    parameter now needs a type annotation (e.g. `|mut mat: MyModel|`), and if
+    the active model is not an `SM` a warning is emitted once and the mapping
+    is skipped.
+  - `Draw::{alpha_blend,color_blend,blend,polygon_mode}` and
+    `Drawing::base_color` only apply to the default nannou shader model; with
+    a custom model active they warn once and no-op.
+  - `Drawing::texture(..)` now works with *any* shader model via
+    `ShaderModel::set_texture` (previously restricted to the default model).
+  - `Drawing::map_ty` and the `Into<Option<T>>` conversions on `Primitive`
+    are removed; builder methods now mutate the stored primitive in place.
+
+### Dependencies & toolchain
+
+- Built on Bevy `0.19` (currently tracking the `0.19` release candidates) and
+  `wgpu` `29`.
+- Crates now use the Rust 2024 edition and require a recent stable toolchain.
+
+### Cargo features
+
+Each nannou crate now enables only the bevy features it needs, and `nannou`
+re-exposes the commonly useful ones so they can be controlled from a `nannou`
+dependency alone ([#997](https://github.com/nannou-org/nannou/issues/997)):
+
+- Image formats for asset loading are now cargo features (`png`, `jpeg`, `hdr`,
+  `exr`, `gif`, `webp`, `tiff` and friends), with `png` and `jpeg` enabled by
+  default. Previously only JPEG textures could be loaded.
+- `multi_threaded` (enabled by default) runs bevy's task pools across multiple
+  threads; previously nannou apps ran single-threaded unless `hot_reload` was
+  enabled. Disable default features to opt out.
+- Both Linux window backends (`x11` and `wayland`) are now enabled by default,
+  matching bevy - the appropriate one is selected at runtime.
+- `trace`, `trace_chrome` and `trace_tracy` are re-exposed for profiling.
+- Any other bevy feature can still be enabled by adding a direct `bevy`
+  dependency, as cargo features are additive across the dependency graph.
+
+### Migration notes
+
+For existing nannou `0.19` projects, the most common changes are:
+
+- App `view` functions drop the `Frame` argument. The app-level/default view
+  (e.g. via `simple_window`) is now `fn view(app: &App, model: &Model, window: Entity)`,
+  and per-window view functions (via `Window::Builder::view`) are
+  `fn view(app: &App, model: &Model)`.
+- `update` functions drop the event argument:
+  `fn update(app: &App, model: &mut Model)`.
+- Windows are referenced by their Bevy `Entity` rather than a `window::Id`.
+- Event handler arguments now use Bevy's input types (e.g. `KeyCode`,
+  `MouseButton`, `TouchInput`).
+- egui UIs are now created via `bevy_egui` rather than `nannou_egui`.
+
+Sketches built with `nannou::sketch(view)` and the `Draw` API generally require
+minimal changes beyond updating colour constant names where they differ.
+
+## Audio
+
+`nannou_audio` now builds on [CPAL](https://crates.io/crates/cpal) `0.18`
+(previously `0.13`), bringing more reliable ALSA support
+([#1035](https://github.com/nannou-org/nannou/pull/1035)), new PipeWire and
+PulseAudio hosts on Linux and BSD, and many other backend improvements.
+Notable changes for `nannou_audio` users:
+
+- CPAL's per-operation error types (`BuildStreamError`, `StreamError`,
+  `DevicesError`, etc.) are replaced by a unified `cpal::Error` with an
+  `ErrorKind`. `Host`, `Device` and `Stream` methods now return `cpal::Error`,
+  stream error functions now receive a `cpal::Error`, and the cpal-specific
+  variants of `stream::BuildError` collapse into a single `Cpal` variant.
+- Streams can now negotiate any of CPAL's sample formats (`I8` through `F64`,
+  including the 24-bit `I24`/`U24`) rather than only `I16`/`U16`/`F32`.
+  Formats beyond those three are converted to and from the stream's sample
+  type via an intermediate `f32` representation.
+- **Behaviour change:** streams are now returned *paused* from `build`,
+  matching CPAL `0.18`'s behaviour on every backend. Previously, streams on
+  ALSA, CoreAudio and JACK would begin processing as soon as they were built.
+  Call `stream.play()` to start a stream - the nannou examples demonstrate
+  this.
+- `Device::max_supported_input_channels` and
+  `Device::max_supported_output_channels` now return a `Result` rather than
+  panicking when the device's supported configurations cannot be queried
+  (e.g. the new retryable `ErrorKind::DeviceBusy`).
+- `nannou_midi`'s `midir` dependency is updated to `0.11` so that it can share
+  the underlying ALSA bindings with CPAL.
 
 ---
 
@@ -154,7 +305,7 @@ Most changes have been about renaming Blend-related data structres and fixing sh
 - Update dependencies:
     - `conrod_*` from 0.73 to 0.74.
     - `noise` from 0.6 to 0.7 (`image` feature no longer enabled).
-    - `rand` from 0.7 to 0.8 (changes `gen_range(a,b)` to `gen_range(a..b)`)
+    - `rand` from 0.7 to 0.8 (changes `random_range(a,b)` to `random_range(a..b)`)
 ---
 
 # Version 0.16.0 (2021-04-21)
@@ -294,7 +445,7 @@ changelog entry
 - Fixes the issue where `TextureCapturer` could spawn more user callbacks than
   there where worker threads to process them.
 - Fixes the issue where an application might exit before all
-  `window.capture_frames(path)` snapshots have completed.
+  `window.save_screenshots(path)` snapshots have completed.
 - Provides a `TextureCapturer::await_active_snapshots(device)` method that
   allows to properly await the completion of all snapshot read futures by
   polling the device as necessary.
@@ -303,10 +454,10 @@ changelog entry
 - `Snapshot::read_threaded` has been removed in favour of a single
   `Snapshot::read` method that is threaded by default. The old synchronous
   behaviour can be emulated by creating the `TextureCapturer` with a single
-  worker. Likewise, `window.capture_frame_threaded` has been removed in favour
-  of `window.capture_frame` for the same reason.
-- New `app::Builder` and `window::Builder` `max_capture_frame_jobs` and
-  `capture_frame_timeout` methods have been added to allow for specifying the
+  worker. Likewise, `window.save_screenshot_threaded` has been removed in favour
+  of `window.save_screenshot` for the same reason.
+- New `app::Builder` and `window::Builder` `max_save_screenshot_jobs` and
+  `save_screenshot_timeout` methods have been added to allow for specifying the
   number of worker threads and optional timeout duration for the windows' inner
   `TextureCapturer`s.
 
@@ -352,7 +503,7 @@ changelog entry
   crates.
 - Add a `random_ascii()` function.
 - Add many more "Generative Design" and "Nature of Code" examples.
-- Fix bug where `capture_frame_threaded` was not actually threaded.
+- Fix bug where `save_screenshot_threaded` was not actually threaded.
 
 **The Great Repository Refactor**
 
@@ -451,7 +602,7 @@ changelog entry
   ```
   the `view` function signature now must look like:
   ```rust,ignore
-  fn view(app: &App, model: &Model, frame: Frame) {}
+  fn view(app: &App, model: &Model) {}
   ```
   This was necessary to enable ergonomic texture capturing.
 - `frame.submit()` can now be used to submit the frame to the GPU before the end
@@ -461,7 +612,7 @@ changelog entry
   won't do anything!).
 - A `.size(w, h)` builder has been added to the `app::Builder` type that allows
   for specifying a default window size.
-- Add `window.capture_frame(path)` method for capturing the next frame to an
+- Add `window.save_screenshot(path)` method for capturing the next frame to an
   image file at the given file path.
 - Add a `simple_capture.rs` example.
 - Add a `capture_hi_res.rs` example.
@@ -484,8 +635,8 @@ changelog entry
 - Update conrod dependencies to 0.68 for vulkano patch. New version includes
   copy/paste, double-click select and shift-click select support for the
   `TextEdit` widget.
-- [Breaking] Small change to Vulkan debug items.
-- [Breaking] New fields have been added to `DynamicState`.
+- \[Breaking\] Small change to Vulkan debug items.
+- \[Breaking\] New fields have been added to `DynamicState`.
 - Update shade_runner to 0.3 for vulkano patch.
 - Frame command buffer builder no longer provides access to unrelated
   `secondary` buffer methods.
@@ -651,7 +802,7 @@ changelog entry
 - Add `App::elapsed_frames` method.
 - Remove `app.window.id` field in favour of more reliable `app.window_id`
   method.
-- Change `ui::Builder` so that it no longer requires `window::Id`. Now defaults
+- Change `ui::Builder` so that it no longer requires `Entity`. Now defaults
   to focused window.
 - Fix several HiDPI related bugs introduced in the last winit update.
 - Add support for rotation and orientation to `draw` API.
